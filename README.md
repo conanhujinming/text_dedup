@@ -144,23 +144,23 @@ simhash_bits (int, optional, default: 64): The number of bits in the SimHash sig
 ## How It Works
 The deduplication process is a pipeline:
 
-Content-Defined Chunking (CDC):
+### Content-Defined Chunking (CDC)
 
 Each document is broken down into chunks based on the content itself using a rolling hash function. This ensures that if a block of text is inserted or deleted, only the chunks around that change are affected, while other identical blocks across different documents will still produce the same chunks and hashes. A global set of seen chunk hashes is maintained to discard any duplicate chunk after its first appearance.
 
-Text Reconstruction:
+### Text Reconstruction
 
 After discarding duplicate chunks, the remaining unique chunks for each document are concatenated to form a cleaned version of the text.
 
-SimHash Generation:
+### SimHash Generation
 
 Each cleaned document is featurized (tokenized into words), and a SimHash signature (a compact binary fingerprint) is generated. Documents that are semantically similar will have SimHash signatures with a small Hamming distance between them.
 
-Faiss Indexing and Search:
+### Faiss Indexing and Search
 
 All SimHash signatures are added to a Faiss index. A range_search is then performed to efficiently find all pairs of documents whose signatures are within the specified hamming_threshold.
 
-Clustering and Filtering:
+### Clustering and Filtering
 
 A Union-Find data structure is used to group documents into clusters of near-duplicates based on the Faiss search results. For each cluster, only one document (the one with the lowest original index) is kept, and the rest are marked for removal.
 
