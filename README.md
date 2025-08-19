@@ -2,7 +2,7 @@
 
 This toolkit provides a highly optimized solution for large-scale text deduplication. It employs a multi-stage pipeline that combines exact substring deduplication using Content-Defined Chunking (CDC) with near-duplicate detection using SimHash and Faiss. The performance-critical core is implemented in C++ and parallelized with OpenMP, offering a significant speedup over pure Python implementations.
 
-This tool is ideal for cleaning large text datasets for **training large language models**, data analysis, or any application requiring the removal of both exact and near-duplicate content.
+This tool is ideal for cleaning large text datasets for **training large language models**, data analysis, or any application requiring the removal of both exact and near-duplicate content. It is very efficient, requires about 480s for a 1-GB text dataset on my desktop, and almost scales linearly with the data size and the CPU cores.
 
 ## Features
 
@@ -38,8 +38,8 @@ sudo apt-get update
 sudo apt-get install build-essential cmake libomp-dev
 ```
 2. Faiss
-You need to have Faiss installed on your system. It's recommended to build it from source for optimal performance, especially with AVX2 support.
-Please follow the official Faiss installation guide. Ensure you build and install the C++ library. A typical installation might look like this:
+You need to have Faiss installed on your system. It's recommended to install it with conda, especially with AVX2 support.
+Please follow the official Faiss installation guide. Ensure you build and install the C++ library. If you want to build from source, a typical installation might look like this:
 ```bash
 git clone https://github.com/facebookresearch/faiss.git
 cd faiss
@@ -50,7 +50,7 @@ sudo make -C build install
 3. Python Dependencies
 The project requires several Python packages. You can install them using pip:
 ```bash
-pip install datasets tqdm pybind11 scikit-build-core ninja
+pip install -r requirements.txt
 ```
 Installation
 This project uses scikit-build-core to compile the C++ extension. Once all system and Python dependencies are met, you can install the toolkit directly using pip from the project's root directory.
@@ -125,20 +125,44 @@ print(final_dataset.to_pandas())
 ```
 ## Configuration Parameters
 The deduplicate_cpp function takes several important parameters:
+
 docs (List[str]): A list of documents to deduplicate.
+
 min_length_dedup (int): Controls the Content-Defined Chunking. It acts as both the minimum chunk size and the divisor for the rolling hash, influencing the average chunk size. A smaller value (e.g., 64, 128) is better for fine-grained deduplication.
+
 hamming_threshold (int): The maximum Hamming distance for two documents to be considered near-duplicates. For a 64-bit SimHash, a value between 3 and 7 is typical.
+
 faiss_index_type (str): The type of Faiss index to use.
+
 "hash" (Recommended Default): Fast to build and query, good balance for this task.
+
 "IVF": Slower to build but very fast to query. Better for scenarios where you build an index once and query it many times.
+
 "flat": Brute-force search. Guarantees 100% accuracy but is slow for large datasets. Useful for debugging or small-scale tasks.
+
 simhash_bits (int, optional, default: 64): The number of bits in the SimHash signature. Must be a multiple of 8.
 ## How It Works
 The deduplication process is a pipeline:
-Content-Defined Chunking (CDC): Each document is broken down into chunks based on the content itself using a rolling hash function. This ensures that if a block of text is inserted or deleted, only the chunks around that change are affected, while other identical blocks across different documents will still produce the same chunks and hashes. A global set of seen chunk hashes is maintained to discard any duplicate chunk after its first appearance.
-Text Reconstruction: After discarding duplicate chunks, the remaining unique chunks for each document are concatenated to form a cleaned version of the text.
-SimHash Generation: Each cleaned document is featurized (tokenized into words), and a SimHash signature (a compact binary fingerprint) is generated. Documents that are semantically similar will have SimHash signatures with a small Hamming distance between them.
-Faiss Indexing and Search: All SimHash signatures are added to a Faiss index. A range_search is then performed to efficiently find all pairs of documents whose signatures are within the specified hamming_threshold.
-Clustering and Filtering: A Union-Find data structure is used to group documents into clusters of near-duplicates based on the Faiss search results. For each cluster, only one document (the one with the lowest original index) is kept, and the rest are marked for removal.
+
+Content-Defined Chunking (CDC):
+
+Each document is broken down into chunks based on the content itself using a rolling hash function. This ensures that if a block of text is inserted or deleted, only the chunks around that change are affected, while other identical blocks across different documents will still produce the same chunks and hashes. A global set of seen chunk hashes is maintained to discard any duplicate chunk after its first appearance.
+
+Text Reconstruction:
+
+After discarding duplicate chunks, the remaining unique chunks for each document are concatenated to form a cleaned version of the text.
+
+SimHash Generation:
+
+Each cleaned document is featurized (tokenized into words), and a SimHash signature (a compact binary fingerprint) is generated. Documents that are semantically similar will have SimHash signatures with a small Hamming distance between them.
+
+Faiss Indexing and Search:
+
+All SimHash signatures are added to a Faiss index. A range_search is then performed to efficiently find all pairs of documents whose signatures are within the specified hamming_threshold.
+
+Clustering and Filtering:
+
+A Union-Find data structure is used to group documents into clusters of near-duplicates based on the Faiss search results. For each cluster, only one document (the one with the lowest original index) is kept, and the rest are marked for removal.
+
 ## Contribution
 Feel free to open issues or submit pull requests. Any contributions to improve performance, accuracy, or usability are welcome.
