@@ -69,16 +69,16 @@ struct RollingHash {
 
 
 // Generates chunks and their xxHash hashes for a given text
-std::pair<std::vector<std::string>, std::vector<uint64_t>>
+std::pair<std::vector<std::string_view>, std::vector<uint64_t>>
 get_chunks_and_hashes(std::string_view text, int min_length_dedup, size_t window_size = 16) {
     const uint64_t divisor = std::max(1, min_length_dedup);
 
     if (text.length() < min_length_dedup) {
         if (text.empty()) return {{}, {}};
-        return {{std::string(text)}, {XXH3_64bits(text.data(), text.length())}};
+        return {{std::string_view(text)}, {XXH3_64bits(text.data(), text.length())}};
     }
 
-    std::vector<std::string> chunks; // Changed from string_view to string
+    std::vector<std::string_view> chunks; // Changed from string_view to string
     std::vector<uint64_t> hashes;
     size_t start_pos = 0;
 
@@ -359,7 +359,7 @@ std::vector<std::optional<std::string>> deduplicate_cpp(
     // 1.A: Generate chunks and hashes, ensuring data ownership.
     
     // === BUG FIX 1: Change the type to std::string to own the data ===
-    std::vector<std::vector<std::pair<uint64_t, std::string>>> doc_chunks_info(docs.size());
+    std::vector<std::vector<std::pair<uint64_t, std::string_view>>> doc_chunks_info(docs.size());
 
     #pragma omp parallel for schedule(dynamic)
     for (size_t i = 0; i < docs.size(); ++i) {
