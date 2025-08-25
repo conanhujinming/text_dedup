@@ -11,11 +11,16 @@ import numpy as np
 from datasets import load_dataset
 from datasketch import MinHash, MinHashLSH
 from tqdm import tqdm
+from ftfy import fix_text
 
 
 try:
     import dedup_cpp_core
     CPP_CORE_AVAILABLE = True
+    find_duplicates_cpp = dedup_cpp_core.find_duplicates_cpp
+    get_chunks_and_hashes = dedup_cpp_core.get_chunks_and_hashes
+    get_document_simhash = dedup_cpp_core.get_document_simhash_performance
+    process_texts_for_signatures_cpp = dedup_cpp_core.process_texts_for_signatures_cpp
 except ImportError:
     CPP_CORE_AVAILABLE = False
     print("Warning: C++ core 'dedup_cpp_core' not found. --use_cpp will not be available.")
@@ -670,10 +675,13 @@ def clean_text(text: str) -> str:
     """
     Cleans and repairs Unicode text that might have encoding errors.
     """
-    if not isinstance(text, str):
-        return ""
-    # ftfy is specifically designed to fix mojibake and other Unicode issues.
-    return fix_text(text)
+    if isinstance(text, str):
+        cleaned_text = text.encode('utf-8', errors='replace').decode('utf-8')
+    elif isinstance(text, bytes):
+        cleaned_text = text.decode('utf-8', errors='replace')
+    return cleaned_text
+
+
 
 def run_deduplication_with_cpp_core(dataset, args):
     """
@@ -683,7 +691,7 @@ def run_deduplication_with_cpp_core(dataset, args):
     
     # 1. Extract the text column into a list of strings
     # Handle potential None values, C++ expects strings.
-    docs = [doc[args.text_column] or "" for doc in tqdm(dataset, desc="Preparing data for C++ core")]
+    docs = [clean_text(doc[args.text_column]) or "" for doc in tqdm(dataset, desc="Preparing data for C++ core")]
     
     # 2. Call the C++ function with the corresponding arguments
     print("Calling C++ deduplication function...")
@@ -692,7 +700,7 @@ def run_deduplication_with_cpp_core(dataset, args):
         args.min_length_dedup,
         args.hamming_threshold,
         args.faiss_index_type,
-        args.simhash_permutations
+        args.simhash_bits
     )
 
     # The stats (like character reduction) are printed inside the C++ code.
@@ -719,7 +727,7 @@ def main():
     parser.add_argument("--jaccard_threshold", type=float, default=0.85, help="Jaccard similarity threshold for near-duplicates.")
     parser.add_argument("--hamming_threshold", type=int, default=3, help="Hamming distance threshold for near-duplicates.")
     parser.add_argument("--minhash_permutations", type=int, default=128, help="Number of permutations for MinHash (for 'lsh' method).")
-    parser.add_argument("--simhash_permutations", type=int, default=64, help="Number of permutations for SimHash (for 'faiss' method).")
+    parser.add_argument("--simhash_bits", type=int, default=64, help="Number of permutations for SimHash (for 'faiss' method).")
     parser.add_argument("--shingle_size", type=int, default=5, help="N-gram size for shingles (for 'lsh' method).")
 
     parser.add_argument("--use_cpp", action='store_true', help="Use the optimized C++ version for deduplication.")
@@ -772,10 +780,10 @@ def main():
         final_dataset = dataset_after_substr # The dataset to be filtered
         if args.near_dedup_method != 'none':
             # Note: The Python SimHash implementation needs the hashbits to be a multiple of 64
-            if args.near_dedup_method == 'faiss' and args.simhash_permutations % 64 != 0:
-                 print(f"Warning: Python SimHash requires bits to be a multiple of 64. Adjusting {args.simhash_permutations} to the nearest multiple.")
-                 args.simhash_permutations = max(64, 64 * round(args.simhash_permutations / 64))
-                 print(f"Using {args.simhash_permutations} bits for SimHash.")
+            if args.near_dedup_method == 'faiss' and args.simhash_bits % 64 != 0:
+                 print(f"Warning: Python SimHash requires bits to be a multiple of 64. Adjusting {args.simhash_bits} to the nearest multiple.")
+                 args.simhash_bits = max(64, 64 * round(args.simhash_bits / 64))
+                 print(f"Using {args.simhash_bits} bits for SimHash.")
 
             if args.near_dedup_method == 'lsh':
                 docs_to_remove = find_duplicates_lsh(
@@ -791,7 +799,7 @@ def main():
                     args.text_column,
                     args.hamming_threshold,
                     args.faiss_index_type,
-                    args.simhash_permutations
+                    args.simhash_bits
                 )
             elif args.near_dedup_method == 'hnsw':
                 docs_to_remove = find_duplicates_hnsw(

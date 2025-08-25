@@ -13,6 +13,12 @@ os.makedirs(os.path.dirname(init_py_path), exist_ok=True)
 
 EXPOSED_FUNCTIONS = [
     "deduplicate_cpp",
+    "get_chunks_and_hashes",
+    "get_CDC_hashes_cpp",
+    "find_duplicates_cpp",
+    "get_document_simhash_performance",
+    "process_texts_for_signatures_cpp",
+    "clean_texts_with_bad_hashes_cpp"
 ]
 
 

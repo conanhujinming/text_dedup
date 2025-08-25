@@ -30,7 +30,6 @@ execute_process(
 )
 find_package(pybind11 REQUIRED HINTS "${pybind11_CMAKE_DIR}")
 
-# your path for faiss
 list(APPEND CMAKE_PREFIX_PATH "/usr/local")
 
 find_path(FAISS_INCLUDE_DIR
