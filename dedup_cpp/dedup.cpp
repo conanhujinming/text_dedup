@@ -334,6 +334,7 @@ std::vector<uint64_t> get_document_simhash_performance(std::string_view text, in
 
         const __m256i weights_add = _mm256_set1_epi32(weight);
         const __m256i weights_sub = _mm256_set1_epi32(-weight);
+        const __m256i ones = _mm256_set1_epi32(1);
 
         int i = 0;
         for (; i <= hashbits - 8; i += 8) {
@@ -351,21 +352,27 @@ std::vector<uint64_t> get_document_simhash_performance(std::string_view text, in
             __m256i v_current = _mm256_loadu_si256((__m256i*)&v[i]);
             
             // --- BUG FIX STARTS HERE ---
-            // Create a proper mask. If the sign bit of a 32-bit integer in prng_hash is 1,
-            // the corresponding 32-bit lane in 'mask' will be all 1s (0xFFFFFFFF).
-            // Otherwise, it will be all 0s (0x00000000).
-            __m256i mask = _mm256_srai_epi32(prng_hash, 31);
+            // The original logic incorrectly used the sign bit. The corrected logic uses the
+            // lowest bit (`& 1`), making it consistent with the scalar fallback path.
+
+            // 1. Isolate the lowest bit of each 32-bit hash. Each lane becomes 0 or 1.
+            __m256i lowest_bits = _mm256_and_si256(prng_hash, ones);
+
+            // 2. Create a mask. If a lane in lowest_bits is 1, the corresponding lane
+            //    in the mask becomes all 1s (0xFFFFFFFF). Otherwise, it's all 0s.
+            __m256i mask = _mm256_cmpeq_epi32(lowest_bits, ones);
             
-            // Now, blendv will work correctly because all bytes within a 32-bit lane
-            // of the mask will have the same sign bit.
-            __m256i delta = _mm256_blendv_epi8(weights_sub, weights_add, mask);
+            // 3. Blend using the mask. If mask bit is 1 (i.e., hash's lowest bit was 1),
+            //    select from weights_add. Otherwise, select from weights_sub.
+            //    _mm256_blendv_epi8 selects from the first operand if the mask's high bit is 1.
+            __m256i delta = _mm256_blendv_epi8(weights_add, weights_sub, mask);
             // --- BUG FIX ENDS HERE ---
             
             __m256i v_new = _mm256_add_epi32(v_current, delta);
             _mm256_storeu_si256((__m256i*)&v[i], v_new);
         }
 
-        // Handle the remainder
+        // Handle the remainder (This part was already correct)
         for (; i < hashbits; ++i) {
             if (XXH3_64bits_withSeed(&feature_hash, sizeof(feature_hash), i) & 1) {
                 v[i] += weight;
@@ -376,7 +383,7 @@ std::vector<uint64_t> get_document_simhash_performance(std::string_view text, in
     }
 
 #else
-    // Fallback scalar path (this part was already correct)
+    // Fallback scalar path (This part was already correct)
     for (const auto& [feature, weight] : features) {
         uint64_t feature_hash = XXH3_64bits(feature.data(), feature.length());
         for (int i = 0; i < hashbits; ++i) {
@@ -397,6 +404,7 @@ std::vector<uint64_t> get_document_simhash_performance(std::string_view text, in
     }
     return fingerprint;
 }
+
 
 // A simple Union-Find (Disjoint Set Union) data structure for clustering
 struct UnionFind {
